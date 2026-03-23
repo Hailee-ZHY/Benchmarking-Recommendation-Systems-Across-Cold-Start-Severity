@@ -47,3 +47,4 @@ if __name__ == "__main__":
         # data_overview(df_review)
         # Meta Dataset
         data_overview(dp.df_meta)
+        dp.df_meta.show()

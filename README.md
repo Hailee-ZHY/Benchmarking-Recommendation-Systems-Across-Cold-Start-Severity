@@ -29,26 +29,28 @@
 | Not a watercolor book! Seems like copies imo. | It is definitely not a watercolor book.  The paper bucked completely.  The pages honestly appear to be photo copies of other pictures. I say that bc if you look at the seal pics you can see the tell tale line at the bottom of the page.  As someone who has made many photocopies of pages in my time so I could try out different colors & mediums that black line is a dead giveaway to me. It’s on other pages too.  The entire book just seems off. Nothing is sharp & clear. There is what looks like toner dust on all the pages making them look muddy.  There are no sharp lines & there is no clear definition.  At least there isn’t in my copy.  And the Coloring Book for Adult on the bottom of the front cover annoys me. Why is it singular & not plural?  They usually say coloring book for kids or coloring book for kids & adults or coloring book for adults- plural.  Lol  Plus it would work for kids if you can get over the grey scale nature of it.  Personally I’m not going to waste expensive pens & paints trying to paint over the grey & black mess.  I grew up in SW Florida minutes from the beaches & I was really excited about the sea life in this. I hope the printers & designers figure out how to clean up the mess bc some of the designs are really cute. They just aren’t worth my time to hand trace & transfer them, but I’m sure there are ppl that will be up to the challenge.  This is one is a hard no. Going back. I tried. |
 
 ##  Meta Dataset Overview
-* **Total Rows**: 29,475,453 reviews
-* **Original Size**: ~14.7 GB (Compressed)
+* **Total Rows**: 4,448,181 products
+* **Original Size**: ~GB (Compressed)
 
 ## Schema Definition (need to be updated)
 | Column | Type | Description |
 | :--- | :--- | :--- |
-| **main_category**   | str   | Main category (i.e., domain) of the product.                                |
-| **title**           | str   | Name of the product.                                                        |
-| **average_rating**  | float | Rating of the product shown on the product page.                            |
-| **rating_number**   | int   | Number of ratings in the product.                                           |
-| **features**        | list  | Bullet-point format features of the product.                                |
-| **description**     | list  | Description of the product.                                                 |
-| **price**           | float | Price in US dollars (at time of crawling).                                  |
-| **images**          | list  | Images of the product. Each image has different sizes (thumb, large, hi_res). The "variant" field shows the position of image. |
-| **videos**          | list  | Videos of the product including title and url.                              |
-| **store**           | str   | Store name of the product.                                                  |
-| **categories**      | list  | Hierarchical categories of the product.                                     |
-| **details**         | dict  | Product details, including materials, brand, sizes, etc.                    |
-| **parent_asin**     | str   | Parent ID of the product.                                                   |
-| **bought_together** | list  | Recommended bundles from the websites.                                      |
+| main_category   | string     | Product domain/category |
+| title           | string     | Product title |
+| average_rating  | double     | Average user rating |
+| rating_number   | bigint     | Number of ratings |
+| features        | array      | Product bullet features |
+| description     | array      | Product description |
+| price           | string     | Price (string format) |
+| images          | struct     | Image URLs (hi_res, large, thumb, variant) |
+| videos          | struct     | Video info (title, url, user_id) |
+| store           | string     | Store name |
+| categories      | array      | Hierarchical categories |
+| details         | string     | Additional product details |
+| parent_asin     | string     | Parent product ID |
+| bought_together | string     | Frequently bought together |
+| subtitle        | string     | Subtitle |
+| author          | string     | Author |
 
 ## Environment & Configuration
 * **Engine**: PySpark (Local Mode)
