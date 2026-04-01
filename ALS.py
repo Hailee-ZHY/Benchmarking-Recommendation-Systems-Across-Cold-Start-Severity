@@ -18,9 +18,9 @@ def train_asl(
     user_col="user_id", 
     item_col="parent_asin", 
     rating_col="rating", 
-    max_iter=5, 
+    max_iter=3, #5
     reg_param=0.09, 
-    rank=25, 
+    rank=10, #25 
     cold_start_strategy="drop"
 ):
     # index columns
