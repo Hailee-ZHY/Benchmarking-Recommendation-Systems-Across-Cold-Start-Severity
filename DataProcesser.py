@@ -24,7 +24,9 @@ class DataProcessing:
 
       def _als_sample_data_(self, k):
 
-            df_review = spark.read.parquet("my_amazon_books_sample.parquet").cache()
+            df_review = spark.read.parquet("my_amazon_books_sample.parquet")\
+                  .select("user_id", "parent_asin", "rating")\
+                  .cache()
 
             # Step 1: filter active users: reviews > 6
             user_count = df_review.groupBy("user_id").agg(

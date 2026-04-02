@@ -11,7 +11,7 @@ parquet_name = 'my_amazon_books_sample.parquet'
 if not os.path.exists(parquet_name):
     print(f'The review dataset is being generated------')
     dataset = load_dataset("McAuley-Lab/Amazon-Reviews-2023", "raw_review_Books", trust_remote_code=True)
-    cols_to_keep = ["user_id", "parent_asin", "rating"]
+    cols_to_keep = ["user_id", "parent_asin", "rating", "text"]
     small_ds = dataset["full"].select_columns(cols_to_keep)
     sampled_ds = small_ds.select(range(int(len(small_ds) * 0.01)))
     sampled_ds.to_parquet(f'{parquet_name}')
