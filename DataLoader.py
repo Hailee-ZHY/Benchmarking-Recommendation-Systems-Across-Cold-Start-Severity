@@ -7,11 +7,14 @@ reference: https://medium.com/@patelneha1495/recommendation-system-in-python-usi
 
 
 # 1. load review data and save as parquet 
-parquet_name = 'my_amazon_books.parquet'
+parquet_name = 'my_amazon_books_sample.parquet'
 if not os.path.exists(parquet_name):
     print(f'The review dataset is being generated------')
     dataset = load_dataset("McAuley-Lab/Amazon-Reviews-2023", "raw_review_Books", trust_remote_code=True)
-    dataset['full'].to_parquet('my_amazon_books.parquet')
+    cols_to_keep = ["user_id", "parent_asin", "rating"]
+    small_ds = dataset["full"].select_columns(cols_to_keep)
+    sampled_ds = small_ds.select(range(int(len(small_ds) * 0.01)))
+    sampled_ds.to_parquet(f'{parquet_name}')
 else:
     print(f'{parquet_name} has been there----------')
 

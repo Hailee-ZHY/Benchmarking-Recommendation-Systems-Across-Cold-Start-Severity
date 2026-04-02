@@ -209,6 +209,4 @@ __marimo__/
 # dataset
 my_amazon_books.parquet
 my_amazon_books_meta.parquet
-
-# test
-test.py
+my_amazon_books_sample.parquet

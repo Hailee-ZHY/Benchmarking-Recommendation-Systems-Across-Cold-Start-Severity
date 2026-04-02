@@ -1,150 +1,113 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.functions import col, trim, isnan
+from pyspark.sql.functions import col, hash, abs
+from pyspark.sql.window import Window
 
 import os
 
 # 1. spark for review dataset
 spark = SparkSession.builder\
     .appName('Amazon_book_recommendation')\
-    .config('spark.driver.memory', '8g')\
-    .config('spark.executor.memory', '8g')\
-    .config("spark.default.parallelism", "64")\
-    .config('spark.sql.shuffle.partitions', '64')\
-    .config('spark.driver.maxResultSize', '2g')\
+    .config('spark.driver.memory', '6g')\
+    .config('spark.executor.memory', '6g')\
+    .config("spark.default.parallelism", "32")\
+    .config('spark.sql.shuffle.partitions', '32')\
+    .config('spark.driver.maxResultSize', '1g')\
     .config("spark.dynamicAllocation.enabled", "false")\
+    .config('spark.memory.fraction', '0.6')\
     .getOrCreate()
 
 # 2. Preprocessing
 class DataProcessing:
-        def __init__(self):
-              spark.catalog.clearCache()
-              # Review Data
-              self.df_review = spark.read.parquet('my_amazon_books.parquet')
-              # Meta Data
-              self.df_meta = spark.read.parquet('my_amazon_books_meta.parquet')
-              self.train_als, self.test_als, self.meta_als = self.Data_Process(method = 'ALS', size = 'small')
-              self.cold_start_data = self.simulate(alpha = 10)
-              
+      def __init__(self, k):
+            self.als_train_df, self.als_test_df = self._als_sample_data_(k)
 
-        def Data_Process(self, method = 'ALS', size = 'full'):
-               if method == 'ALS' and size == 'full':
-                      # only need: user_id, item_id, rating
-                      df_review_clean = self.df_review.filter((col("user_id").isNotNull()) 
-                                                              & (col("parent_asin").isNotNull())
-                                                              & (trim(col("user_id")) != "")
-                                                              & (trim(col("parent_asin")) != ""))
+      def _als_sample_data_(self, k):
 
-                      data_review_als = df_review_clean.select('user_id', 'parent_asin', 'rating') # this is used for training                     
-                      data_meta_als = self.df_meta.select('title', 'parent_asin') # this is use for provide book title in the recommendation system
-                      # split data into training and testing set
-                      train_df, test_df = data_review_als.randomSplit(weights = [0.7, 0.3], seed = 42)
-               elif method == 'ALS' and size == 'small':
-                      df_review_clean = self.df_review.filter((col("user_id").isNotNull()) 
-                                                              & (col("parent_asin").isNotNull())
-                                                              & (trim(col("user_id")) != "")
-                                                              & (trim(col("parent_asin")) != ""))
+            df_review = spark.read.parquet("my_amazon_books_sample.parquet").cache()
 
-                      data_review_als = df_review_clean.select('user_id', 'parent_asin', 'rating').limit(100000) # this is used for training                     
-                      data_meta_als = self.df_meta.select('title', 'parent_asin') # this is use for provide book title in the recommendation system
-                      # split data into training and testing set
-                      train_df, test_df = data_review_als.randomSplit(weights = [0.7, 0.3], seed = 42)
-               
-               return train_df, test_df, data_meta_als
+            # Step 1: filter active users: reviews > 6
+            user_count = df_review.groupBy("user_id").agg(
+                  F.count("*").alias("rating_cnt_by_user")
+            )
 
-### Simulate the sparse dataset (cold start)
-        def simulate(self, alpha = 100, k = 1):
-               # methods means the filter methods, we can choose ["both", "user", "item"]
-               # k means the ratio of cold start
+            users_eligible = user_count.filter(
+                  F.col("rating_cnt_by_user") >= 14
+            ).select("user_id")
 
-               # Step1. select users / items could be used for simulation
+            df_filtered = df_review.join(users_eligible, on="user_id", how="inner")
 
-                user_rating_count = self.test_als.groupBy("user_id").agg(
-                       F.count("rating").alias("rating_cnt_by_user")
-                        )
-                filtered_user_id = user_rating_count.filter(F.col("rating_cnt_by_user") >= alpha).select("user_id")
+            # Step 2: count again
+            user_count = df_filtered.groupBy("user_id").agg(
+                  F.count("*").alias("cnt")
+            )
 
-                item_rating_count = self.test_als.groupBy("parent_asin").agg(
-                      F.count("rating").alias("rating_cnt_by_item")
-                        )
+            df_filtered = df_filtered.join(user_count, on="user_id")
 
-                filtered_item_id = item_rating_count.filter(F.col("rating_cnt_by_item") >= alpha).select("parent_asin")
-                     
-                cold_simulate_df = self.test_als.join(filtered_user_id, on = "user_id", how = "inner") \
-                                                .join(filtered_item_id, on = "parent_asin", how = "inner")
-                """
-                test_data: [user_id, parent_asin, rating]
-                cold_simulate:[user_id, parent_asin, rating]
-                """
+            # Step 3: assign random rank per user
+            window = Window.partitionBy("user_id").orderBy(F.rand(42))  # fix the split
 
-               # step2. using K to remove rating record for users (temperarily only for users)
-                # Todo
-                return cold_simulate_df
-                
-      
-# 2. Overview of dataset
-def data_overview(df):
-        print(f'review data summary: {df.count()}')
-        print(f'review data columns: {df.columns}')
-        print(f'data type: {df.dtypes}')
+            df_ranked = df_filtered.withColumn(
+                  "rank",
+                  F.row_number().over(window)
+            )
 
-        ## for review dataset
-        if {'title', 'text'}.issubset(df.columns):
-            print(f'check title and text: ')
-            df.select('title', 'text').show(5, truncate = True)
+            # Step 4: split
+            df_ranked = df_ranked.withColumn(
+                  "threshold",
+                  F.col("cnt") * k
+            )
+
+            test_df = df_ranked.filter(F.col("rank") <= F.col("threshold"))
+            train_df = df_ranked.filter(F.col("rank") > F.col("threshold"))
+
+            return train_df, test_df
+
+      def als_data_overview(self):  # only for data review
+            df_review = spark.read.parquet("my_amazon_books_sample.parquet").cache()
+
+            # Step 1: filter active users: reviews > 6
+            user_count = df_review.groupBy("user_id").agg(
+                  F.count("*").alias("rating_cnt_by_user")
+            )
+
+            stats = user_count.agg(
+                  F.max("rating_cnt_by_user").alias("user_review_max"),
+                  F.min("rating_cnt_by_user").alias("user_review_min"),
+                  F.avg("rating_cnt_by_user").alias("user_review_avg"),
+            ).collect()[0]
+
+            
+            print(f"user_review_max: {stats['user_review_max']}")
+            print(f"user_review_min: {stats['user_review_min']}")
+            print(f"user_review_avg: {stats['user_review_avg']}")
+            print(f"sample size: {df_review.count()}")
+            print(f"user numbers: {df_review.select('user_id').distinct().count()}")
+            print(f"item numbers: {df_review.select('parent_asin').distinct().count()}")
+
+            user_count.select(
+                  F.expr("percentile(rating_cnt_by_user, array(0.25, 0.5, 0.75, 0.9, 0.99))")
+            ).show(truncate=False)
 
 if __name__ == "__main__":
-        spark.catalog.clearCache()
-        dp = DataProcessing()
-        dp.cold_start_data.show(10)
-        
-        # Review Dataset
-        # data_overview(df_review)
-        # Meta Dataset
-        # train, test, meta = dp.Data_Process()
-        # print(f"train count: {dp.train_als.count()}")
-        # print(f"test count: {dp.test_als.count()}")
-        # print(f"meta count: {dp.meta_als.count()}")
-        # user, item = dp.simulate()
-        # print("user simulate data cols:")
-        # for col, dtype in user.dtypes:
-        #        print(f"{col}:{dtype}")
+      d = DataProcessing(k = 0.2)
+      print(f"count of train: {d.als_train_df.count()}") # => 154,349
+      print(f"count of test: {d.als_test_df.count()}") # => 36,675
 
-        # print("item simulate data cols:")
-        # for col, dtype in item.dtypes:
-        #        print(f"{col}:{dtype}")
 
-        ## check again: does user_id has null value? -- confirm: there is no null value in user_id 
-        # user_null_cnt = user.filter(col("user_id").isNull()).count()
-        # print(user_null_cnt)
 
-        # cold_df = dp.simulate()
-        # cold_df.describe().show()
 
 """
-Notes:
-Data Summary for ALS: 
-train count: 20,628,076                                                           
-test count: 8,847,377                                                             
-meta count: 4,448,181
-
-Count the number of ratings for users and items:
-
-
-1. user_id has non-value -- remove null value  -- still have null value
-2. item shid has non-value -- remove null value
-
-
-In test data (30%), we need to filter out users satifying the criteria. 
-actually, the # of user parcitipainting into the test is much lower than 20% of the data set
-Only 9639 rows. 
-+-------+--------------------+--------------------+------------------+          
-|summary|         parent_asin|             user_id|            rating|
-+-------+--------------------+--------------------+------------------+
-|  count|                9639|                9639|              9639|
-|   mean|                    |                NULL| 4.201888162672477|
-| stddev|                    |                NULL|0.9609044575690069|
-|    min|                    |                    |               1.0|
-|    max|                    |                    |               5.0|
-+-------+--------------------+--------------------+------------------+
+sample data:
+user_review_max: 3888
+user_review_min: 1
+user_review_avg: 8.246481828609797
+sample size: 294754
+user numbers: 35743
+item numbers: 189305
++--------------------------------------------------------------------+
+|percentile(rating_cnt_by_user, array(0.25, 0.5, 0.75, 0.9, 0.99), 1)|
++--------------------------------------------------------------------+
+|[1.0, 2.0, 6.0, 14.0, 84.0]                                         |
++--------------------------------------------------------------------+
 """
