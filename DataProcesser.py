@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, hash, abs
 from pyspark.sql.window import Window
+import re
 
 import os
 
@@ -20,8 +21,8 @@ spark = SparkSession.builder\
 # 2. Preprocessing
 class DataProcessing:
       def __init__(self, k):
-            self.als_train_df, self.als_test_df = self._als_sample_data_(k)
-
+            self.als_train_df, self.als_test_df = self._als_sample_data_(k)        
+            self.embedding_meta_df = self._embedding_data_clean_()
       def _als_sample_data_(self, k):
 
             df_review = spark.read.parquet("my_amazon_books_sample.parquet")\
@@ -65,6 +66,65 @@ class DataProcessing:
 
             return train_df, test_df
 
+      def _embedding_data_(self):
+            # read meta data 
+            df_meta = spark.read.parquet("my_amazon_books_meta_sample.parquet")
+
+            user_data = self.als_train_df.unionByName(self.als_test_df)
+            
+            meta_embedding_df = df_meta.join(
+                  user_data.select("parent_asin").distinct(), 
+                  on = "parent_asin", 
+                  how = "inner",
+            ).select("title", "parent_asin", "subtitle", "description", "author")
+
+            return meta_embedding_df
+      
+      def _embedding_data_clean_(self, max_chars = 500):
+            df = self._embedding_data_()   
+
+            text_col = F.concat_ws(" ", F.col("description"))
+
+            common_patterns = [
+                  r"\bReview\b",
+                  r"\bAbout the Author\b",
+                  r"\bFrom the Author\b",
+                  r"\bFrom the Back Cover\b",
+                  r"\bProduct Description\b",
+                  r"\bPraise for\b",
+            ]
+
+            cleaned = (
+                  df
+                  .withColumn("title_text", F.coalesce(F.col("title").cast("string"), F.lit("")))
+                  .withColumn("description_text", F.coalesce(text_col, F.lit("")))
+                  .withColumn("description_text", F.regexp_replace("description_text", r"[\xa0\r\n\t]+", " "))
+                  .withColumn("description_text", F.regexp_replace("description_text", r"\s+", " "))
+                  .withColumn("description_text", F.trim(F.col("description_text")))
+            )
+
+            for pattern in common_patterns:
+                  cleaned = cleaned.withColumn(
+                        "description_text",
+                        F.regexp_replace(F.col("description_text"), pattern, "")
+                  )
+
+            cleaned = (
+                  cleaned
+                  .withColumn("description_text", F.regexp_replace("description_text", r"\s+", " "))
+                  .withColumn("description_text", F.trim(F.col("description_text")))
+                  .withColumn("description_clean", F.substring(F.col("description_text"), 1, max_chars))
+                  .withColumn(
+                        "embedding_text", 
+                        F.trim(F.concat_ws(" ", F.col("title_text"), F.col("description_clean")))
+                  )
+                  .filter(F.col("embedding_text").isNotNull())
+                  .filter(F.col("embedding_text") != "")
+                  .select("parent_asin", "embedding_text")
+            )
+
+            return cleaned
+
       def als_data_overview(self):  # only for data review
             df_review = spark.read.parquet("my_amazon_books_sample.parquet").cache()
 
@@ -93,11 +153,25 @@ class DataProcessing:
 
 if __name__ == "__main__":
       d = DataProcessing(k = 0.2)
-      print(f"count of train: {d.als_train_df.count()}") # => 154,349
-      print(f"count of test: {d.als_test_df.count()}") # => 36,675
+      # print(f"count of train: {d.als_train_df.count()}") # => 154,349
+      # print(f"count of test: {d.als_test_df.count()}") # => 36,675
+      # print(f"count of meta: {d.meta_embedding_df.count()}") # => 134,544
+      # for i in d.meta_embedding_df.select("description").take(1):
+      #       print(i(["description"]))
 
+      # j = d.meta_embedding_df.filter(
+      #       F.lower(F.concat_ws(" ", F.col("description"))).contains("about the author")
+      # ).count()  
+      # print(j) # => 87648
+      
+      # cnt = d.meta_embedding_df.filter(
+      #      ( ~F.lower(F.concat_ws(" ", F.col("description"))).contains("about the author"))
+      #       & (F.col("description").isNotNull())
+      #       & (F.size(F.col("description")) > 0)
+      # ).count()  
+      # print(cnt) # => 7184
 
-
+      d._embedding_data_clean_().show(2, truncate= False)
 
 """
 sample data:

@@ -20,10 +20,12 @@ else:
 
 
 # 2. load meta data and save as parquet
-parquet_name = 'my_amazon_books_meta.parquet'
+parquet_name = 'my_amazon_books_meta_sample.parquet'
 if not os.path.exists(parquet_name):
     print(f'The meta dataset is being generated------')
     meta_dataset = load_dataset("McAuley-Lab/Amazon-Reviews-2023", "raw_meta_Books", trust_remote_code = True)
-    meta_dataset['full'].to_parquet('my_amazon_books_meta.parquet')
+    cols_to_keep = ["title", "parent_asin", "subtitle", "description", "author"]
+    sampled_ds = meta_dataset["full"].select_columns(cols_to_keep)
+    sampled_ds.to_parquet('my_amazon_books_meta_sample.parquet')
 else:
     print(f'{parquet_name} has been there----------')
