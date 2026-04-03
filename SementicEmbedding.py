@@ -7,12 +7,12 @@ import torch
 # create embedding space
 
 class semnetic_embedding:
-      def __init__(self,train_df, test_df, meta_data, top_n, k, model = "all-MiniLM-L6-v2"):
+      def __init__(self,train_df, test_df, meta_data, top_n, model = "all-MiniLM-L6-v2"):
             self.model = SentenceTransformer(model, device = 'cuda')
             self.train_df = train_df
             self.test_df = test_df
             self.top_n = top_n
-            self.k = k
+            # self.k = k
             self.meta_data = meta_data
 
       def generate_item_embedding(self):
@@ -136,24 +136,26 @@ class semnetic_embedding:
             
 
 if __name__ == "__main__":
-      k = 0.5
-      top_n = 10 
-      d = DataProcessing(k)
-      train_df, test_df, meta_data = d.als_train_df, d.als_test_df, d.embedding_meta_df
-      s = semnetic_embedding(train_df, test_df, meta_data, top_n, k)
-      eval_res = s.run()
-      print(f"embedding result: {eval_res}")     
+      # k = 0.5
+      # top_n = 10 
+      # d = DataProcessing(k)
+      # train_df, test_df, meta_data = d.als_train_df, d.als_test_df, d.embedding_meta_df
+      # s = semnetic_embedding(train_df, test_df, meta_data, top_n, k)
+      # eval_res = s.run()
+      # print(f"embedding result: {eval_res}")     
 
-      
-      # result = []
-      # for k in [i/10 for i in range(1, 10)]:
-      #       s = semnetic_embedding(train_df, test_df, meta_data, top_n, k)
-      #       eval_res = s.run()
-      #       result.append({
-      #             "k": k, 
-      #             "precision": eval_res["precision_at_k"],
-      #             "recall": eval_res["recall_at_k"], 
-      #             "hit_rate": eval_res["hit_rate_at_k"]
-      #       })
-      # result_df = pd.DataFrame(result)
-      # result_df.to_csv("embedding_eval_by_k.csv", index = False)
+      top_n = 10 
+      result = []
+      for k in [i/10 for i in range(1, 10)]:
+            d = DataProcessing(k)
+            train_df, test_df, meta_data = d.als_train_df, d.als_test_df, d.embedding_meta_df
+            s = semnetic_embedding(train_df, test_df, meta_data, top_n)
+            eval_res = s.run()
+            result.append({
+                  "k": k, 
+                  "precision": eval_res["precision_at_k"],
+                  "recall": eval_res["recall_at_k"], 
+                  "hit_rate": eval_res["hit_rate_at_k"]
+            })
+      result_df = pd.DataFrame(result)
+      result_df.to_csv("embedding_eval_by_k.csv", index = False)
