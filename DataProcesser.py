@@ -23,6 +23,7 @@ class DataProcessing:
       def __init__(self, k):
             self.als_train_df, self.als_test_df = self._als_sample_data_(k)        
             self.embedding_meta_df = self._embedding_data_clean_()
+            
       def _als_sample_data_(self, k):
 
             df_review = spark.read.parquet("my_amazon_books_sample.parquet")\
